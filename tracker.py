@@ -13,7 +13,7 @@ log_sheet = gspread_client.open_by_key("1cu66ZGH9HkBEoLB2FMVyPOXS7PaZ7oxfLg9ba3V
 
 
 def extract_items_from_message(message: str):
-    return [item.strip().lower() for item in message.split(",")]
+    return [item.strip() for item in message.split(",")]
 
 def fuzzy_match(input_items, known_items, threshold=50):
     matched = []
@@ -54,24 +54,33 @@ def extract_items_and_quantities(message: str):
     
     return items, quantities
 
-def get_item_row(item_name: str, items):
-    """
-    Finds the row number (1-based) of the item name (case-insensitive).
-    Returns None if not found.
-    """
-    for idx, value in enumerate(items):
-        if value.strip().lower() == item_name.strip().lower():
-            return idx + 1  # gspread uses 1-based indexing
-    return None
 
 def log_transaction(user, items, total_price):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     row = [timestamp] + [user] + [total_price] + [", ".join([f"{item['name']} x{item['qty']}" for item in items])]
     log_sheet.append_row(row)
 
+def restore_inventory(items, quantities):
+    recovered_items = []
+    recovered_quantities = []
+    founds = []
+    for item, quantity in zip(items, quantities):
+        cell = sheet.find(item)
+        found = False
+        if cell:
+            row = cell.row
+            col = cell.col
+            current_qty = sheet.cell(row, col + 2).numeric_value
+            new_qty = current_qty - quantity
+            sheet.update_cell(row, col + 2, new_qty) 
+            found = True
+        recovered_items.append(item)
+        recovered_quantities.append(quantity)
+        founds.append(found)
+    return recovered_items, recovered_quantities, founds
+
 def update_sheet(content: str, user: str = "Unknown User"):
-    # Placeholder for updating a Google Sheet or similar service
-    # This function would contain the logic to update the sheet with the message
+
     items, quantities = extract_items_and_quantities(content)
 
     sheet_data = sheet.get_all_records()
@@ -107,3 +116,26 @@ def update_sheet(content: str, user: str = "Unknown User"):
 
     log_transaction(user, [{"name": item, "qty": qty} for item, qty in zip(matched_items, quantities)], price)
     return results
+
+def undo(user: str):
+    records = log_sheet.get_all_records()
+    for i in range(len(records)-1, -1, -1):
+        entry = records[i]
+        if entry["User"] == user:
+            items, quantities = extract_items_and_quantities(entry["Items"])
+            rcv_items, rcv_quantities, rcv_found = restore_inventory(items, quantities)
+            status = []
+            for item, quantity, found in zip(rcv_items, rcv_quantities, rcv_found):
+                if found:
+                    status.append(f"✅ {quantity}× {item} restored")
+                else:
+                    status.append(f"❌ {item} not found in the sheet")
+            if all(rcv_found):
+                log_sheet.delete_rows(i + 2)
+                status.append("---------------------------------------------------")
+                status.append("Transaction undone successfully.")
+            else:
+                status.append("Transaction could not be undone due to missing items.")
+            break
+            
+    return status if len(status) > 0 else None

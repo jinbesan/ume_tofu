@@ -125,6 +125,14 @@ async def on_message(message):
         items = tracker.update_sheet(content, user)
         await message.channel.send("\n".join(items))
 
+    if msg.startswith(command_prefix + "undo"):
+        user = message.author.name
+        items = tracker.undo(user)
+        if items:
+            await message.channel.send("\n".join(items))
+        else:
+            await message.channel.send("No items to undo.")
+
     if msg.startswith(command_prefix + "help"):
         help_message = (
             "Available commands:\n"
