@@ -6,6 +6,9 @@ from utils.llm import LLMClient
 
 
 RESPONSE_CHANCE = float(os.getenv("RESPONSE_CHANCE", "0.01"))
+RESPONSE_CHANCE_HELP = float(os.getenv("RESPONSE_CHANCE_HELP", "0.5"))
+RESPONSE_CHANCE_SHRIMP = float(os.getenv("RESPONSE_CHANCE_SHRIMP", "0.3"))
+RESPONSE_CHANCE_MENTIONED = float(os.getenv("RESPONSE_CHANCE_MENTIONED", "0.5"))
 command_prefix = "ume "
 
 
@@ -25,7 +28,19 @@ class ResponderCog(commands.Cog):
         if message.content.startswith(command_prefix):
             return
 
-        if random.random() > RESPONSE_CHANCE:
+        msg_lower = message.content.lower()
+
+
+        if self.bot.user in message.mentions:
+            chance = RESPONSE_CHANCE_MENTIONED
+        elif msg_lower == "help":
+            chance = RESPONSE_CHANCE_HELP
+        elif "shrimp" in msg_lower or "pink" in msg_lower:
+            chance = RESPONSE_CHANCE_SHRIMP
+        else:
+            chance = RESPONSE_CHANCE
+
+        if random.random() > chance:
             return
 
         response = self.llm_client.get_response(message.content)
